@@ -2,12 +2,15 @@ package providers
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	nwacCenterID = "NWAC"
+	nwacCenterID          = "NWAC"
+	nwacSnowObsToken      = "71ad26d7aaf410e39efe91bd414d32e1db5d"
+	nwacSnowObsTimeseries = "https://api.snowobs.com/wx/v1/station/data/timeseries/"
 )
 
 var nwacZoneMap = map[string]nwacZoneConfig{
@@ -72,6 +75,29 @@ type nwacForecastResponse struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	} `json:"forecast_zone"`
+}
+
+type nwacTelemetryConfig struct {
+	StationID string
+	PageSlug  string
+	SnowObsID string
+}
+
+var nwacTelemetryStations = map[string]nwacTelemetryConfig{
+	"alpental":        {StationID: "alpental", PageSlug: "alpental", SnowObsID: "1"},
+	"alpental-base":   {StationID: "alpental-base", PageSlug: "alpental", SnowObsID: "1"},
+	"alpental-mid":    {StationID: "alpental-mid", PageSlug: "alpental", SnowObsID: "2"},
+	"alpental-middle": {StationID: "alpental-mid", PageSlug: "alpental", SnowObsID: "2"},
+	"alpental-summit": {StationID: "alpental-summit", PageSlug: "alpental", SnowObsID: "3"},
+	"snoqualmie-pass": {StationID: "snoqualmie-pass", PageSlug: "snoqualmiepass", SnowObsID: "21"},
+	"snoqualmie":      {StationID: "snoqualmie-pass", PageSlug: "snoqualmiepass", SnowObsID: "21"},
+	"stevens-pass":    {StationID: "stevens-pass", PageSlug: "stevenshwy2", SnowObsID: "13"},
+	"stevens":         {StationID: "stevens-pass", PageSlug: "stevenshwy2", SnowObsID: "13"},
+	"mt-baker":        {StationID: "mt-baker", PageSlug: "mtbakerskiarea", SnowObsID: "5"},
+	"baker":           {StationID: "mt-baker", PageSlug: "mtbakerskiarea", SnowObsID: "5"},
+	"rainier":         {StationID: "rainier", PageSlug: "paradise", SnowObsID: "35"},
+	"crystal":         {StationID: "crystal", PageSlug: "crystalskiarea", SnowObsID: "28"},
+	"rainier-crystal": {StationID: "rainier-crystal", PageSlug: "crystalskiarea", SnowObsID: "28"},
 }
 
 func (a *NWACAdapter) GetAvalancheForecast(zoneID string) (map[string]any, error) {
@@ -234,55 +260,191 @@ func cleanHTML(v string) string {
 }
 
 func (a *NWACAdapter) GetTelemetry(stationID string) (map[string]any, error) {
-	apiURL := fmt.Sprintf("https://nwac.us/api/v6/station/%s", stationID)
+	cfg, err := resolveTelemetryConfig(stationID)
+	if err != nil {
+		return nil, err
+	}
+
+	end := time.Now().UTC()
+	start := end.Add(-24 * time.Hour)
+	apiURL := fmt.Sprintf(
+		"%s?token=%s&source=nwac&stid=%s&start_date=%s&end_date=%s",
+		nwacSnowObsTimeseries,
+		nwacSnowObsToken,
+		cfg.SnowObsID,
+		start.Format("200601021504"),
+		end.Format("200601021504"),
+	)
+
 	var resp struct {
-		StationName     string   `json:"station_name"`
-		StationNameAlt  string   `json:"stationName"`
-		Timestamp       string   `json:"timestamp"`
-		ObservedAt      string   `json:"observed_at"`
-		ObservedAtAlt   string   `json:"observedAt"`
-		TemperatureF    *float64 `json:"temperature_f"`
-		TemperatureFAlt *float64 `json:"temperatureF"`
-		SnowDepthIn     *float64 `json:"snow_depth_in"`
-		SnowDepthInAlt  *float64 `json:"snowDepthIn"`
-		WindSpeedMPH    *float64 `json:"wind_speed_mph"`
-		WindSpeedMPHAlt *float64 `json:"windSpeedMph"`
-		WindDirection   string   `json:"wind_direction"`
-		WindDirection2  string   `json:"windDirection"`
+		Station []struct {
+			StationID    string `json:"stid"`
+			Name         string `json:"name"`
+			Observations struct {
+				DateTime           []string `json:"date_time"`
+				AirTemp            []any    `json:"air_temp"`
+				PrecipAccumOneHour []any    `json:"precip_accum_one_hour"`
+				SnowDepth24h       []any    `json:"snow_depth_24h"`
+				SnowDepth          []any    `json:"snow_depth"`
+				WindSpeed          []any    `json:"wind_speed"`
+				WindGust           []any    `json:"wind_gust"`
+				WindDirection      []any    `json:"wind_direction"`
+			} `json:"observations"`
+		} `json:"STATION"`
 	}
 	if err := a.HTTP.GetJSON(apiURL, &resp); err != nil {
 		return nil, err
 	}
-
-	ts := firstNonEmpty(resp.Timestamp, resp.ObservedAt, resp.ObservedAtAlt, time.Now().UTC().Format(time.RFC3339))
-	temp := resp.TemperatureF
-	if temp == nil {
-		temp = resp.TemperatureFAlt
+	if len(resp.Station) == 0 {
+		return nil, fmt.Errorf("ParseError: SnowObs API missing station data for stid %s", cfg.SnowObsID)
 	}
-	snow := resp.SnowDepthIn
-	if snow == nil {
-		snow = resp.SnowDepthInAlt
+	station := resp.Station[0]
+	ts := lastNonEmptyString(station.Observations.DateTime)
+	if ts == "" {
+		ts = end.Format(time.RFC3339)
 	}
-	wind := resp.WindSpeedMPH
-	if wind == nil {
-		wind = resp.WindSpeedMPHAlt
-	}
+	temp := lastFloat(station.Observations.AirTemp)
+	snowDepth := lastFloat(station.Observations.SnowDepth)
+	snow24h := lastFloat(station.Observations.SnowDepth24h)
+	precip24h := sumFloats(station.Observations.PrecipAccumOneHour)
+	wind := lastFloat(station.Observations.WindSpeed)
+	peakGust := maxFloat(station.Observations.WindGust)
+	windDirection := lastString(station.Observations.WindDirection)
+	hoursObserved := len(station.Observations.DateTime)
 
 	return map[string]any{
 		"provider":  "NWAC",
 		"issued_at": ts,
 		"source": map[string]any{
 			"provider":     "NWAC",
-			"url":          fmt.Sprintf("https://nwac.us/weatherdata/%s/", stationID),
+			"url":          fmt.Sprintf("https://nwac.us/weatherdata/%s/now/", cfg.PageSlug),
 			"api_url":      apiURL,
 			"retrieved_at": time.Now().UTC().Format(time.RFC3339),
 		},
-		"station_id":     stationID,
-		"station_name":   firstNonEmpty(resp.StationName, resp.StationNameAlt, stationID),
-		"timestamp":      ts,
-		"temperature_f":  temp,
-		"snow_depth_in":  snow,
-		"wind_speed_mph": wind,
-		"wind_direction": firstNonEmpty(resp.WindDirection, resp.WindDirection2),
+		"station_id":          cfg.StationID,
+		"station_name":        firstNonEmpty(strings.TrimSpace(station.Name), cfg.StationID),
+		"timestamp":           ts,
+		"hours_observed":      hoursObserved,
+		"temperature_f":       temp,
+		"snow_depth_in":       snowDepth,
+		"snowfall_in_24h":     snow24h,
+		"precip_total_in_24h": precip24h,
+		"wind_speed_mph":      wind,
+		"peak_wind_gust_mph":  peakGust,
+		"wind_direction":      windDirection,
 	}, nil
+}
+
+func resolveTelemetryConfig(stationID string) (nwacTelemetryConfig, error) {
+	base := normalizeZoneKey(stationID)
+	if base == "" {
+		return nwacTelemetryConfig{}, fmt.Errorf("NotFound: missing telemetry station ID")
+	}
+	if cfg, ok := nwacTelemetryStations[base]; ok {
+		return cfg, nil
+	}
+	if _, err := strconv.Atoi(base); err == nil {
+		return nwacTelemetryConfig{
+			StationID: base,
+			PageSlug:  base,
+			SnowObsID: base,
+		}, nil
+	}
+	return nwacTelemetryConfig{}, fmt.Errorf("NotFound: unsupported telemetry station '%s' (try a known NWAC station alias or SnowObs numeric station id)", stationID)
+}
+
+func lastFloat(values []any) *float64 {
+	for i := len(values) - 1; i >= 0; i-- {
+		switch v := values[i].(type) {
+		case float64:
+			out := v
+			return &out
+		case int:
+			out := float64(v)
+			return &out
+		case int64:
+			out := float64(v)
+			return &out
+		default:
+			continue
+		}
+	}
+	return nil
+}
+
+func sumFloats(values []any) *float64 {
+	sum := 0.0
+	count := 0
+	for i := range values {
+		if v := floatFromAny(values[i]); v != nil {
+			sum += *v
+			count++
+		}
+	}
+	if count == 0 {
+		return nil
+	}
+	return &sum
+}
+
+func maxFloat(values []any) *float64 {
+	var max *float64
+	for i := range values {
+		v := floatFromAny(values[i])
+		if v == nil {
+			continue
+		}
+		if max == nil || *v > *max {
+			next := *v
+			max = &next
+		}
+	}
+	return max
+}
+
+func floatFromAny(v any) *float64 {
+	switch n := v.(type) {
+	case float64:
+		out := n
+		return &out
+	case int:
+		out := float64(n)
+		return &out
+	case int64:
+		out := float64(n)
+		return &out
+	default:
+		return nil
+	}
+}
+
+func lastString(values []any) string {
+	for i := len(values) - 1; i >= 0; i-- {
+		switch v := values[i].(type) {
+		case string:
+			s := strings.TrimSpace(v)
+			if s != "" {
+				return s
+			}
+		case float64:
+			return strconv.FormatFloat(v, 'f', -1, 64)
+		case int:
+			return strconv.Itoa(v)
+		case int64:
+			return strconv.FormatInt(v, 10)
+		default:
+			continue
+		}
+	}
+	return ""
+}
+
+func lastNonEmptyString(values []string) string {
+	for i := len(values) - 1; i >= 0; i-- {
+		v := strings.TrimSpace(values[i])
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

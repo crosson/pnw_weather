@@ -9,6 +9,7 @@ var AllowedDomains = map[string]struct{}{
 	"weather.gov":       {},
 	"api.weather.gov":   {},
 	"api.avalanche.org": {},
+	"api.snowobs.com":   {},
 	"nwac.us":           {},
 	"wsdot.wa.gov":      {},
 	"wsdot.com":         {},
