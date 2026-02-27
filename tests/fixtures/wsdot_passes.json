@@ -1,0 +1,12 @@
+{
+  "Passes": [
+    {
+      "MountainPassId": "snoqualmie",
+      "MountainPassName": "Snoqualmie Pass",
+      "DateUpdated": "2026-02-26T22:10:00+00:00",
+      "RoadCondition": "Open",
+      "RestrictionOne": "Chains required for some vehicles",
+      "WeatherCondition": "Snowing"
+    }
+  ]
+}
