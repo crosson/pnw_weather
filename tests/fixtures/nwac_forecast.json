@@ -1,0 +1,11 @@
+{
+  "issued_at": "2026-02-26T20:30:00+00:00",
+  "zone_name": "Snoqualmie Pass",
+  "danger_rating": {
+    "below_treeline": "Moderate",
+    "near_treeline": "Considerable",
+    "above_treeline": "High"
+  },
+  "primary_problems": ["Wind Slabs", "Persistent Slabs"],
+  "travel_advice_summary": "Avoid steep wind-loaded slopes."
+}

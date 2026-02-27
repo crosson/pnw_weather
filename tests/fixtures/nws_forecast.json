@@ -1,0 +1,17 @@
+{
+  "properties": {
+    "updated": "2026-02-26T22:00:00+00:00",
+    "periods": [
+      {
+        "name": "Tonight",
+        "startTime": "2026-02-26T18:00:00-08:00",
+        "endTime": "2026-02-27T06:00:00-08:00",
+        "temperature": 28,
+        "windDirection": "NW",
+        "windSpeed": "10 mph",
+        "probabilityOfPrecipitation": {"value": 60},
+        "shortForecast": "Snow showers likely"
+      }
+    ]
+  }
+}
