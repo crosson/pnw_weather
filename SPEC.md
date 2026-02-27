@@ -199,16 +199,20 @@ Normalized response example:
 "is_stale": false,
 "source": {
 "provider": "NWAC",
-"url": "https://nwac.us/weatherdata/alpental-base/",
-"api_url": "https://nwac.us/api/v6/station/alpental-base",
+"url": "https://nwac.us/weatherdata/alpental/now/",
+"api_url": "https://api.snowobs.com/wx/v1/station/data/timeseries/?token=...&source=nwac&stid=1&start_date=YYYYMMDDHHMM&end_date=YYYYMMDDHHMM",
 "retrieved_at": "ISO-8601"
 },
 "station_id": "alpental-base",
 "station_name": "Alpental Base",
 "timestamp": "ISO-8601",
+"hours_observed": 24,
 "temperature_f": 30,
+"precip_total_in_24h": 1.1,
+"snowfall_in_24h": 7,
 "snow_depth_in": 78,
 "wind_speed_mph": 15,
+"peak_wind_gust_mph": 35,
 "wind_direction": "NW"
 }
 
