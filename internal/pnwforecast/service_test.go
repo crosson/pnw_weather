@@ -50,21 +50,20 @@ func TestDailyDigestPartialFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	nwacPageFixture, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "nwac_forecast_page.html"))
+	nwacFixture, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "nwac_forecast.json"))
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
 
 	getter := &fakeGetter{
 		JSONMap: map[string]json.RawMessage{
-			"https://api.weather.gov/points/47.445,-121.425":         json.RawMessage(`{"properties":{"forecast":"https://api.weather.gov/gridpoints/SEW/157,74/forecast"}}`),
-			"https://api.weather.gov/gridpoints/SEW/157,74/forecast": json.RawMessage(nwsFixture),
-			providers.WSDOTAPIURL:                                    json.RawMessage(wsdotFixture),
+			"https://api.weather.gov/points/47.445,-121.425":                                        json.RawMessage(`{"properties":{"forecast":"https://api.weather.gov/gridpoints/SEW/157,74/forecast"}}`),
+			"https://api.weather.gov/gridpoints/SEW/157,74/forecast":                                json.RawMessage(nwsFixture),
+			providers.WSDOTAPIURL:                                                                   json.RawMessage(wsdotFixture),
+			"https://api.avalanche.org/v2/public/product?type=forecast&center_id=NWAC&zone_id=1653": json.RawMessage(nwacFixture),
 			// telemetry intentionally missing to force partial failure
 		},
-		TextMap: map[string]string{
-			"https://nwac.avy-fx.org/forecasts/avalanche/snoqualmie-pass": string(nwacPageFixture),
-		},
+		TextMap: map[string]string{},
 	}
 
 	svc.NWS = &providers.NWSAdapter{HTTP: getter}

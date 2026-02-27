@@ -1,11 +1,38 @@
 {
-  "issued_at": "2026-02-26T20:30:00+00:00",
-  "zone_name": "Snoqualmie Pass",
-  "danger_rating": {
-    "below_treeline": "Moderate",
-    "near_treeline": "Considerable",
-    "above_treeline": "High"
-  },
-  "primary_problems": ["Wind Slabs", "Persistent Slabs"],
-  "travel_advice_summary": "Avoid steep wind-loaded slopes."
+  "id": 181495,
+  "published_time": "2026-02-27T02:00:00+00:00",
+  "expires_time": "2026-02-28T02:00:00+00:00",
+  "bottom_line": "<p>A well-documented weak snowpack structure exists at Snoqualmie Pass.</p>",
+  "hazard_discussion": "<p>Choose terrain carefully.</p>",
+  "forecast_avalanche_problems": [
+    {
+      "name": "Persistent Slab",
+      "problem_type": {"name": "Persistent Slab"}
+    },
+    {
+      "name": "Wind Slab",
+      "problem_type": {"name": "Wind Slab"}
+    }
+  ],
+  "danger": [
+    {
+      "lower": 2,
+      "middle": 3,
+      "upper": 3,
+      "valid_day": "current"
+    },
+    {
+      "lower": 2,
+      "middle": 3,
+      "upper": 3,
+      "valid_day": "tomorrow"
+    }
+  ],
+  "forecast_zone": [
+    {
+      "id": 1653,
+      "name": "Snoqualmie Pass",
+      "url": "http://www.nwac.us/avalanche-forecast/#/snoqualmie-pass"
+    }
+  ]
 }

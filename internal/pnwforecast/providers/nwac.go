@@ -2,68 +2,229 @@ package providers
 
 import (
 	"fmt"
-	"html"
-	"regexp"
 	"strings"
 	"time"
-	"unicode"
 )
+
+const (
+	nwacCenterID = "NWAC"
+)
+
+var nwacZoneMap = map[string]nwacZoneConfig{
+	"snoqualmie-pass": {ID: 1653, Name: "Snoqualmie Pass", Slug: "snoqualmie-pass"},
+	"snoqualmie":      {ID: 1653, Name: "Snoqualmie Pass", Slug: "snoqualmie-pass"},
+	"1653":            {ID: 1653, Name: "Snoqualmie Pass", Slug: "snoqualmie-pass"},
+
+	"stevens-pass": {ID: 1649, Name: "Stevens Pass", Slug: "stevens-pass"},
+	"stevens":      {ID: 1649, Name: "Stevens Pass", Slug: "stevens-pass"},
+	"1649":         {ID: 1649, Name: "Stevens Pass", Slug: "stevens-pass"},
+
+	"west-slopes-north": {ID: 1646, Name: "West Slopes North", Slug: "west-slopes-north"},
+	"baker":             {ID: 1646, Name: "West Slopes North", Slug: "west-slopes-north"},
+	"mt-baker":          {ID: 1646, Name: "West Slopes North", Slug: "west-slopes-north"},
+	"1646":              {ID: 1646, Name: "West Slopes North", Slug: "west-slopes-north"},
+
+	"west-slopes-south": {ID: 1648, Name: "West Slopes South", Slug: "west-slopes-south"},
+	"rainier":           {ID: 1648, Name: "West Slopes South", Slug: "west-slopes-south"},
+	"crystal":           {ID: 1648, Name: "West Slopes South", Slug: "west-slopes-south"},
+	"rainier-crystal":   {ID: 1648, Name: "West Slopes South", Slug: "west-slopes-south"},
+	"1648":              {ID: 1648, Name: "West Slopes South", Slug: "west-slopes-south"},
+}
+
+type nwacZoneConfig struct {
+	ID   int
+	Name string
+	Slug string
+}
 
 type NWACAdapter struct {
 	HTTP interface {
-		GetText(endpoint string) (string, error)
 		GetJSON(endpoint string, out any) error
 	}
 }
 
+type nwacForecastResponse struct {
+	ID               int    `json:"id"`
+	PublishedTime    string `json:"published_time"`
+	ExpiresTime      string `json:"expires_time"`
+	BottomLine       string `json:"bottom_line"`
+	HazardDiscussion string `json:"hazard_discussion"`
+	Danger           []struct {
+		Lower    int    `json:"lower"`
+		Middle   int    `json:"middle"`
+		Upper    int    `json:"upper"`
+		ValidDay string `json:"valid_day"`
+	} `json:"danger"`
+	ForecastAvalancheProblem []struct {
+		Name        string `json:"name"`
+		ProblemType struct {
+			Name string `json:"name"`
+		} `json:"problem_type"`
+	} `json:"forecast_avalanche_problems"`
+	ForecastZone []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"forecast_zone"`
+}
+
 func (a *NWACAdapter) GetAvalancheForecast(zoneID string) (map[string]any, error) {
-	zoneSlug := zoneToSlug(zoneID)
-	pageURLs := []string{
-		fmt.Sprintf("https://nwac.avy-fx.org/forecasts/avalanche/%s", zoneSlug),
-		fmt.Sprintf("https://nwac.us/avalanche-forecast/%s", zoneSlug),
-		fmt.Sprintf("https://nwac.us/avalanche-forecast/current/%s", zoneSlug),
+	cfg, ok := resolveNWACZone(zoneID)
+	if !ok {
+		return nil, fmt.Errorf("NotFound: unsupported NWAC zone '%s' (supported: snoqualmie, stevens, baker, rainier/crystal)", zoneID)
 	}
 
-	var rawHTML string
-	var err error
-	pageURL := pageURLs[0]
-	for _, candidate := range pageURLs {
-		rawHTML, err = a.HTTP.GetText(candidate)
-		if err == nil {
-			pageURL = candidate
-			break
-		}
-	}
-	if err != nil {
+	apiURL := fmt.Sprintf(
+		"https://api.avalanche.org/v2/public/product?type=forecast&center_id=%s&zone_id=%d",
+		nwacCenterID,
+		cfg.ID,
+	)
+
+	var resp nwacForecastResponse
+	if err := a.HTTP.GetJSON(apiURL, &resp); err != nil {
 		return nil, err
 	}
 
-	zoneName := parseNWACZoneName(rawHTML, zoneID)
-	flat := normalizeHTMLText(rawHTML)
-	below := parseDanger(flat, []string{"Below Treeline"})
-	near := parseDanger(flat, []string{"Treeline", "Near Treeline"})
-	above := parseDanger(flat, []string{"Alpine", "Above Treeline"})
-	primary := parsePrimaryProblems(flat)
-	travel := parseTravelAdvice(flat)
+	current := selectDanger(resp.Danger)
+	below := canonicalDangerFromInt(current.Lower)
+	near := canonicalDangerFromInt(current.Middle)
+	above := canonicalDangerFromInt(current.Upper)
+
+	if below == "NoRating" && near == "NoRating" && above == "NoRating" {
+		return nil, fmt.Errorf("ParseError: NWAC API missing danger ratings for zone_id %d", cfg.ID)
+	}
+
+	zoneName := cfg.Name
+	sourceURL := fmt.Sprintf("https://nwac.us/avalanche-forecast/#/%s/", cfg.Slug)
+	if len(resp.ForecastZone) > 0 {
+		if strings.TrimSpace(resp.ForecastZone[0].Name) != "" {
+			zoneName = resp.ForecastZone[0].Name
+		}
+		if strings.TrimSpace(resp.ForecastZone[0].URL) != "" {
+			sourceURL = strings.ReplaceAll(resp.ForecastZone[0].URL, "http://", "https://")
+		}
+	}
+
+	travel := cleanHTML(firstNonEmpty(resp.BottomLine, resp.HazardDiscussion))
+	problems := normalizeProblems(resp.ForecastAvalancheProblem)
+	issued := firstNonEmpty(resp.PublishedTime, time.Now().UTC().Format(time.RFC3339))
 
 	return map[string]any{
 		"provider":  "NWAC",
-		"issued_at": time.Now().UTC().Format(time.RFC3339),
+		"issued_at": issued,
 		"source": map[string]any{
 			"provider":     "NWAC",
-			"url":          pageURL,
+			"url":          sourceURL,
+			"api_url":      apiURL,
 			"retrieved_at": time.Now().UTC().Format(time.RFC3339),
 		},
-		"zone_id":   zoneID,
+		"zone_id":   cfg.Slug,
 		"zone_name": zoneName,
 		"danger_rating": map[string]string{
 			"below_treeline": below,
 			"near_treeline":  near,
 			"above_treeline": above,
 		},
-		"primary_problems":      primary,
+		"primary_problems":      problems,
 		"travel_advice_summary": travel,
 	}, nil
+}
+
+func resolveNWACZone(v string) (nwacZoneConfig, bool) {
+	key := normalizeZoneKey(v)
+	cfg, ok := nwacZoneMap[key]
+	return cfg, ok
+}
+
+func normalizeZoneKey(v string) string {
+	s := strings.ToLower(strings.TrimSpace(v))
+	s = strings.ReplaceAll(s, "_", "-")
+	s = strings.ReplaceAll(s, " ", "-")
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	return s
+}
+
+func selectDanger(d []struct {
+	Lower    int    `json:"lower"`
+	Middle   int    `json:"middle"`
+	Upper    int    `json:"upper"`
+	ValidDay string `json:"valid_day"`
+}) struct {
+	Lower    int
+	Middle   int
+	Upper    int
+	ValidDay string
+} {
+	for _, item := range d {
+		if strings.EqualFold(item.ValidDay, "current") {
+			return struct {
+				Lower    int
+				Middle   int
+				Upper    int
+				ValidDay string
+			}{item.Lower, item.Middle, item.Upper, item.ValidDay}
+		}
+	}
+	if len(d) > 0 {
+		item := d[0]
+		return struct {
+			Lower    int
+			Middle   int
+			Upper    int
+			ValidDay string
+		}{item.Lower, item.Middle, item.Upper, item.ValidDay}
+	}
+	return struct {
+		Lower    int
+		Middle   int
+		Upper    int
+		ValidDay string
+	}{}
+}
+
+func canonicalDangerFromInt(v int) string {
+	switch v {
+	case 1:
+		return "Low"
+	case 2:
+		return "Moderate"
+	case 3:
+		return "Considerable"
+	case 4:
+		return "High"
+	case 5:
+		return "Extreme"
+	default:
+		return "NoRating"
+	}
+}
+
+func normalizeProblems(items []struct {
+	Name        string `json:"name"`
+	ProblemType struct {
+		Name string `json:"name"`
+	} `json:"problem_type"`
+}) []string {
+	out := make([]string, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, p := range items {
+		name := strings.TrimSpace(firstNonEmpty(p.Name, p.ProblemType.Name))
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
+func cleanHTML(v string) string {
+	return normalizeHTMLText(v)
 }
 
 func (a *NWACAdapter) GetTelemetry(stationID string) (map[string]any, error) {
@@ -118,91 +279,4 @@ func (a *NWACAdapter) GetTelemetry(stationID string) (map[string]any, error) {
 		"wind_speed_mph": wind,
 		"wind_direction": firstNonEmpty(resp.WindDirection, resp.WindDirection2),
 	}, nil
-}
-
-func parseNWACZoneName(rawHTML, zoneID string) string {
-	re := regexp.MustCompile(`(?is)<title>\s*([^<]+?)\s+Avalanche Forecast\s*</title>`)
-	m := re.FindStringSubmatch(rawHTML)
-	if len(m) == 2 {
-		return strings.TrimSpace(html.UnescapeString(m[1]))
-	}
-	return toTitleWords(strings.ReplaceAll(strings.ToLower(zoneID), "_", " "))
-}
-
-func parseDanger(flat string, labels []string) string {
-	levels := []string{"Low", "Moderate", "Considerable", "High", "Extreme", "No Rating"}
-	for _, label := range labels {
-		for _, level := range levels {
-			pat := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(label) + `\s+` + regexp.QuoteMeta(level))
-			if pat.FindStringIndex(flat) != nil {
-				if level == "No Rating" {
-					return "NoRating"
-				}
-				return level
-			}
-		}
-	}
-	return "NoRating"
-}
-
-func parsePrimaryProblems(flat string) []string {
-	known := []string{
-		"Wind Slab",
-		"Persistent Slab",
-		"Storm Slab",
-		"Loose Wet",
-		"Loose Dry",
-		"Cornice Fall",
-		"Glide Avalanche",
-		"Wet Slab",
-	}
-	out := make([]string, 0, 2)
-	for _, problem := range known {
-		if strings.Contains(strings.ToLower(flat), strings.ToLower(problem)) {
-			out = append(out, problem)
-		}
-	}
-	return out
-}
-
-func parseTravelAdvice(flat string) string {
-	re := regexp.MustCompile(`(?is)Travel Advice\s+(.+?)(Avalanche Problems|Weather Forecast|Recent Avalanches|$)`)
-	m := re.FindStringSubmatch(flat)
-	if len(m) < 2 {
-		return ""
-	}
-	text := strings.TrimSpace(m[1])
-	if len(text) > 240 {
-		return strings.TrimSpace(text[:240])
-	}
-	return text
-}
-
-func normalizeHTMLText(raw string) string {
-	withoutScripts := regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`).ReplaceAllString(raw, " ")
-	withoutStyles := regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`).ReplaceAllString(withoutScripts, " ")
-	withoutTags := regexp.MustCompile(`(?is)<[^>]+>`).ReplaceAllString(withoutStyles, " ")
-	unescaped := html.UnescapeString(withoutTags)
-	spaceCollapsed := regexp.MustCompile(`\s+`).ReplaceAllString(unescaped, " ")
-	return strings.TrimSpace(spaceCollapsed)
-}
-
-func toTitleWords(v string) string {
-	parts := strings.Fields(v)
-	for i := range parts {
-		runes := []rune(parts[i])
-		if len(runes) == 0 {
-			continue
-		}
-		runes[0] = unicode.ToUpper(runes[0])
-		parts[i] = string(runes)
-	}
-	return strings.Join(parts, " ")
-}
-
-func zoneToSlug(zoneID string) string {
-	slug := strings.ToLower(strings.TrimSpace(zoneID))
-	slug = strings.ReplaceAll(slug, "_", "-")
-	slug = strings.ReplaceAll(slug, " ", "-")
-	return slug
 }

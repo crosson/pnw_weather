@@ -69,8 +69,8 @@ func TestNWSForecastNormalization(t *testing.T) {
 }
 
 func TestNWACForecastNormalization(t *testing.T) {
-	f := &fakeGetter{TextMap: map[string]string{
-		"https://nwac.avy-fx.org/forecasts/avalanche/snoqualmie-pass": fixtureText(t, "nwac_forecast_page.html"),
+	f := &fakeGetter{JSONMap: map[string]json.RawMessage{
+		"https://api.avalanche.org/v2/public/product?type=forecast&center_id=NWAC&zone_id=1653": fixtureJSON(t, "nwac_forecast.json"),
 	}}
 	adapter := &NWACAdapter{HTTP: f}
 	out, err := adapter.GetAvalancheForecast("SNOQUALMIE_PASS")
@@ -81,7 +81,7 @@ func TestNWACForecastNormalization(t *testing.T) {
 		t.Fatalf("zone = %v", out["zone_name"])
 	}
 	danger := out["danger_rating"].(map[string]string)
-	if danger["above_treeline"] != "High" {
+	if danger["above_treeline"] != "Considerable" || danger["near_treeline"] != "Considerable" || danger["below_treeline"] != "Moderate" {
 		t.Fatalf("danger = %#v", danger)
 	}
 }

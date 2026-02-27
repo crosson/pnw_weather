@@ -6,12 +6,12 @@ import (
 )
 
 var AllowedDomains = map[string]struct{}{
-	"weather.gov":     {},
-	"api.weather.gov": {},
-	"nwac.us":         {},
-	"nwac.avy-fx.org": {},
-	"wsdot.wa.gov":    {},
-	"wsdot.com":       {},
+	"weather.gov":       {},
+	"api.weather.gov":   {},
+	"api.avalanche.org": {},
+	"nwac.us":           {},
+	"wsdot.wa.gov":      {},
+	"wsdot.com":         {},
 }
 
 type FreshnessThresholds struct {
