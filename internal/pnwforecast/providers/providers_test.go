@@ -193,3 +193,102 @@ func TestNWACTelemetryNumericSnowObsStationID(t *testing.T) {
 		t.Fatalf("station_name = %#v", out["station_name"])
 	}
 }
+
+func TestNWACTelemetryBakerPageSlugAlias(t *testing.T) {
+	f := &fakeGetter{JSONPrefixMap: map[string]json.RawMessage{
+		"https://api.snowobs.com/wx/v1/station/data/timeseries/?token=71ad26d7aaf410e39efe91bd414d32e1db5d&source=nwac&stid=5&start_date=": json.RawMessage(`{
+			"STATION": [{
+				"stid":"5",
+				"name":"Mt. Baker - Heather Meadows",
+				"observations": {
+					"date_time":["2026-02-27T17:00:00Z"],
+					"air_temp":[29]
+				}
+			}]
+		}`),
+	}}
+	adapter := &NWACAdapter{HTTP: f}
+	out, err := adapter.GetTelemetry("mtbakerskiarea")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["station_id"] != "mtbakerskiarea" {
+		t.Fatalf("station_id = %#v", out["station_id"])
+	}
+	source := out["source"].(map[string]any)
+	if source["url"] != "https://nwac.us/weatherdata/mtbakerskiarea/now/" {
+		t.Fatalf("source.url = %#v", source["url"])
+	}
+}
+
+func TestNWACTelemetrySnoqualmieAndStevensAliases(t *testing.T) {
+	f := &fakeGetter{JSONPrefixMap: map[string]json.RawMessage{
+		"https://api.snowobs.com/wx/v1/station/data/timeseries/?token=71ad26d7aaf410e39efe91bd414d32e1db5d&source=nwac&stid=21&start_date=": json.RawMessage(`{
+			"STATION": [{
+				"stid":"21",
+				"name":"Snoqualmie Pass",
+				"observations": {"date_time":["2026-02-27T17:00:00Z"], "air_temp":[31]}
+			}]
+		}`),
+		"https://api.snowobs.com/wx/v1/station/data/timeseries/?token=71ad26d7aaf410e39efe91bd414d32e1db5d&source=nwac&stid=13&start_date=": json.RawMessage(`{
+			"STATION": [{
+				"stid":"13",
+				"name":"Stevens Pass - Schmidt Haus",
+				"observations": {"date_time":["2026-02-27T17:00:00Z"], "air_temp":[30]}
+			}]
+		}`),
+	}}
+	adapter := &NWACAdapter{HTTP: f}
+
+	out, err := adapter.GetTelemetry("snoqualmiepass")
+	if err != nil {
+		t.Fatalf("unexpected error snoqualmiepass: %v", err)
+	}
+	if out["station_id"] != "snoqualmiepass" {
+		t.Fatalf("snoqualmiepass station_id = %#v", out["station_id"])
+	}
+
+	out, err = adapter.GetTelemetry("stevenshwy2")
+	if err != nil {
+		t.Fatalf("unexpected error stevenshwy2: %v", err)
+	}
+	if out["station_id"] != "stevenshwy2" {
+		t.Fatalf("stevenshwy2 station_id = %#v", out["station_id"])
+	}
+}
+
+func TestNWACTelemetryRainierCrystalAliases(t *testing.T) {
+	f := &fakeGetter{JSONPrefixMap: map[string]json.RawMessage{
+		"https://api.snowobs.com/wx/v1/station/data/timeseries/?token=71ad26d7aaf410e39efe91bd414d32e1db5d&source=nwac&stid=35&start_date=": json.RawMessage(`{
+			"STATION": [{
+				"stid":"35",
+				"name":"Paradise",
+				"observations": {"date_time":["2026-02-27T17:00:00Z"], "air_temp":[28]}
+			}]
+		}`),
+		"https://api.snowobs.com/wx/v1/station/data/timeseries/?token=71ad26d7aaf410e39efe91bd414d32e1db5d&source=nwac&stid=28&start_date=": json.RawMessage(`{
+			"STATION": [{
+				"stid":"28",
+				"name":"Crystal Mt Ski Area",
+				"observations": {"date_time":["2026-02-27T17:00:00Z"], "air_temp":[29]}
+			}]
+		}`),
+	}}
+	adapter := &NWACAdapter{HTTP: f}
+
+	out, err := adapter.GetTelemetry("paradise")
+	if err != nil {
+		t.Fatalf("unexpected error paradise: %v", err)
+	}
+	if out["station_id"] != "paradise" {
+		t.Fatalf("paradise station_id = %#v", out["station_id"])
+	}
+
+	out, err = adapter.GetTelemetry("crystalskiarea")
+	if err != nil {
+		t.Fatalf("unexpected error crystalskiarea: %v", err)
+	}
+	if out["station_id"] != "crystalskiarea" {
+		t.Fatalf("crystalskiarea station_id = %#v", out["station_id"])
+	}
+}
