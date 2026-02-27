@@ -1,4 +1,7 @@
-# OpenClaw Skill: `pnw_forecast`
+---
+name: pnw-forecast
+description: Provides localized PNW weather, avlanche, and pass road condition forecasts.
+---
 
 ## Purpose
 Use this skill to answer Pacific Northwest conditions questions with structured JSON from trusted sources:
@@ -25,6 +28,10 @@ Always prefer this skill over ad-hoc web browsing for forecast/pass questions in
 - `pass --area <name>` or `pass --pass-id <id>` or `pass --pass-name <name>`
 - `digest [--date <YYYY-MM-DD>] [--area <name> ...]`
 
+### Example
+ - `./pnw-forecast weather-7day --area Alpental`
+ - `./pnw-forecast avalanche --area Alpental`
+
 ## Response Contract
 All provider responses include:
 - `provider`
@@ -41,9 +48,8 @@ When summarizing for end users, include `source.url`.
 ## Operational Rules For Agent
 1. Prefer area-driven calls (`--area`) when the user references known places.
 2. Use `weather` for current day periods and `weather-7day` for extended outlook.
-3. Use `--no-cache` when user asks for “latest/live/current right now”.
-4. For multi-signal summaries, use `digest` and handle per-section errors without failing whole response.
-5. If a command returns a typed error (for example `NotFound`, `UpstreamUnavailable`, `ParseError`), report that section clearly and continue with remaining available sections.
+3. For multi-signal summaries, use `digest` and handle per-section errors without failing whole response.
+4. If a command returns a typed error (for example `NotFound`, `UpstreamUnavailable`, `ParseError`), report that section clearly and continue with remaining available sections.
 
 ## Supported NWAC Forecast Zone Aliases (Current Build)
 The avalanche provider maps these aliases to stable zone IDs:
