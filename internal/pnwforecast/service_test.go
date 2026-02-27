@@ -10,15 +10,24 @@ import (
 )
 
 type fakeGetter struct {
-	Map map[string]json.RawMessage
+	JSONMap map[string]json.RawMessage
+	TextMap map[string]string
 }
 
 func (f *fakeGetter) GetJSON(endpoint string, out any) error {
-	raw, ok := f.Map[endpoint]
+	raw, ok := f.JSONMap[endpoint]
 	if !ok {
 		return NewSkillError("UpstreamUnavailable", "missing fixture for "+endpoint)
 	}
 	return json.Unmarshal(raw, out)
+}
+
+func (f *fakeGetter) GetText(endpoint string) (string, error) {
+	raw, ok := f.TextMap[endpoint]
+	if !ok {
+		return "", NewSkillError("UpstreamUnavailable", "missing fixture for "+endpoint)
+	}
+	return raw, nil
 }
 
 func TestDailyDigestPartialFailure(t *testing.T) {
@@ -41,14 +50,22 @@ func TestDailyDigestPartialFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
+	nwacPageFixture, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "nwac_forecast_page.html"))
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
 
-	getter := &fakeGetter{Map: map[string]json.RawMessage{
-		"https://api.weather.gov/points/47.445,-121.425":         json.RawMessage(`{"properties":{"forecast":"https://api.weather.gov/gridpoints/SEW/157,74/forecast"}}`),
-		"https://api.weather.gov/gridpoints/SEW/157,74/forecast": json.RawMessage(nwsFixture),
-		providers.WSDOTAPIURL:                                    json.RawMessage(wsdotFixture),
-		"https://nwac.us/api/v6/forecast/zone/SNOQUALMIE_PASS":   json.RawMessage(`{"issued_at":"2026-02-26T20:00:00Z","zone_name":"Snoqualmie Pass","danger_rating":{"below_treeline":"Moderate","near_treeline":"Considerable","above_treeline":"High"}}`),
-		// telemetry intentionally missing to force partial failure
-	}}
+	getter := &fakeGetter{
+		JSONMap: map[string]json.RawMessage{
+			"https://api.weather.gov/points/47.445,-121.425":         json.RawMessage(`{"properties":{"forecast":"https://api.weather.gov/gridpoints/SEW/157,74/forecast"}}`),
+			"https://api.weather.gov/gridpoints/SEW/157,74/forecast": json.RawMessage(nwsFixture),
+			providers.WSDOTAPIURL:                                    json.RawMessage(wsdotFixture),
+			// telemetry intentionally missing to force partial failure
+		},
+		TextMap: map[string]string{
+			"https://nwac.avy-fx.org/forecasts/avalanche/snoqualmie-pass": string(nwacPageFixture),
+		},
+	}
 
 	svc.NWS = &providers.NWSAdapter{HTTP: getter}
 	svc.NWAC = &providers.NWACAdapter{HTTP: getter}

@@ -120,9 +120,28 @@ func (s *Service) GetSpotForecast(areaName string, lat, lon float64, elevation *
 		return nil, err
 	}
 	params := map[string]any{"lat": area.Lat, "lon": area.Lon, "datetime": datetime}
-	return s.withCache("NWS", "spot_forecast", params, s.Thresholds.NWSForecastSeconds, func() (any, error) {
+	full, err := s.withCache("NWS", "spot_forecast", params, s.Thresholds.NWSForecastSeconds, func() (any, error) {
 		return s.NWS.GetSpotForecast(area.Lat, area.Lon)
 	})
+	if err != nil {
+		return nil, err
+	}
+	return withPeriodLimit(full, 2), nil
+}
+
+func (s *Service) GetSpotForecast7Day(areaName string, lat, lon float64, elevation *int, datetime string) (map[string]any, error) {
+	area, err := s.resolveArea(areaName, lat, lon, elevation)
+	if err != nil {
+		return nil, err
+	}
+	params := map[string]any{"lat": area.Lat, "lon": area.Lon, "datetime": datetime}
+	full, err := s.withCache("NWS", "spot_forecast", params, s.Thresholds.NWSForecastSeconds, func() (any, error) {
+		return s.NWS.GetSpotForecast(area.Lat, area.Lon)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return withPeriodLimit(full, 14), nil
 }
 
 func (s *Service) GetAvalancheForecast(areaName, zoneID string) (map[string]any, error) {
@@ -257,4 +276,25 @@ func isOlderThan(iso string, seconds int) bool {
 		return false
 	}
 	return int(time.Since(t).Seconds()) > seconds
+}
+
+func withPeriodLimit(payload map[string]any, max int) map[string]any {
+	periodAny, ok := payload["periods"]
+	if !ok {
+		return payload
+	}
+	periods, ok := periodAny.([]any)
+	if !ok {
+		return payload
+	}
+	if len(periods) <= max {
+		return payload
+	}
+	limited := periods[:max]
+	out := make(map[string]any, len(payload))
+	for k, v := range payload {
+		out[k] = v
+	}
+	out["periods"] = limited
+	return out
 }

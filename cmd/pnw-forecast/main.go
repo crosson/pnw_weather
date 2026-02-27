@@ -43,6 +43,8 @@ func main() {
 		handleArea(svc, args)
 	case "weather":
 		handleWeather(svc, args)
+	case "weather-7day", "7day":
+		handleWeather7Day(svc, args)
 	case "avalanche":
 		handleAvalanche(svc, args)
 	case "telemetry":
@@ -139,6 +141,27 @@ func handleWeather(svc *pnwforecast.Service, args []string) {
 		elevationPtr = elevation
 	}
 	out, err := svc.GetSpotForecast(*area, *lat, *lon, elevationPtr, *datetime)
+	if err != nil {
+		fatal(err)
+	}
+	emit(out)
+}
+
+func handleWeather7Day(svc *pnwforecast.Service, args []string) {
+	fs := flag.NewFlagSet("weather-7day", flag.ExitOnError)
+	area := fs.String("area", "", "Area name")
+	lat := fs.Float64("lat", 0, "Latitude")
+	lon := fs.Float64("lon", 0, "Longitude")
+	elevation := fs.Int("elevation-ft", 0, "Elevation (ft)")
+	datetime := fs.String("datetime", "", "Datetime")
+	if err := fs.Parse(args); err != nil {
+		fatal(err)
+	}
+	var elevationPtr *int
+	if *elevation != 0 {
+		elevationPtr = elevation
+	}
+	out, err := svc.GetSpotForecast7Day(*area, *lat, *lon, elevationPtr, *datetime)
 	if err != nil {
 		fatal(err)
 	}

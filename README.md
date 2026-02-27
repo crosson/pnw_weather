@@ -42,10 +42,16 @@ Save an area:
   --wsdot-pass-id snoqualmie
 ```
 
-Get weather by area:
+Get day forecast by area (default `weather` now returns today/tonight periods):
 
 ```bash
 ./pnw-forecast weather --area Alpental
+```
+
+Get 7-day forecast:
+
+```bash
+./pnw-forecast weather-7day --area Alpental
 ```
 
 Get digest:

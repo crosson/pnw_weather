@@ -2,15 +2,17 @@ package providers
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
 
-const WSDOTAPIURL = "https://wsdot.wa.gov/Traffic/api/mountainpasses/mountainpassconditions"
+const WSDOTAPIURL = "https://wsdot.com/Traffic/api/mountainpasses/mountainpassconditions"
 
 type WSDOTAdapter struct {
 	HTTP interface {
 		GetJSON(endpoint string, out any) error
+		GetText(endpoint string) (string, error)
 	}
 }
 
@@ -37,9 +39,13 @@ type wsdotResponse struct {
 
 func (a *WSDOTAdapter) GetPassConditions(passIDOrName string) (map[string]any, error) {
 	var resp wsdotResponse
-	if err := a.HTTP.GetJSON(WSDOTAPIURL, &resp); err != nil {
-		return nil, err
+	if err := a.HTTP.GetJSON(WSDOTAPIURL, &resp); err == nil {
+		return a.fromAPIResponse(passIDOrName, resp)
 	}
+	return a.fromPage(passIDOrName)
+}
+
+func (a *WSDOTAdapter) fromAPIResponse(passIDOrName string, resp wsdotResponse) (map[string]any, error) {
 	records := resp.Passes
 	if len(records) == 0 {
 		records = resp.Alt
@@ -75,7 +81,7 @@ func (a *WSDOTAdapter) GetPassConditions(passIDOrName string) (map[string]any, e
 		"issued_at": issuedAt,
 		"source": map[string]any{
 			"provider":     "WSDOT",
-			"url":          fmt.Sprintf("https://wsdot.wa.gov/travel/real-time/mountain-passes/%s", passID),
+			"url":          fmt.Sprintf("https://wsdot.com/travel/real-time/mountainpasses/%s", passID),
 			"api_url":      WSDOTAPIURL,
 			"retrieved_at": time.Now().UTC().Format(time.RFC3339),
 		},
@@ -84,6 +90,52 @@ func (a *WSDOTAdapter) GetPassConditions(passIDOrName string) (map[string]any, e
 		"status":             status,
 		"restrictions":       firstNonEmpty(selected.RestrictionOne, selected.RestrictionAlt),
 		"weather_conditions": firstNonEmpty(selected.WeatherCondition, selected.WeatherAlt),
+		"last_updated":       issuedAt,
+	}, nil
+}
+
+func (a *WSDOTAdapter) fromPage(passIDOrName string) (map[string]any, error) {
+	passSlug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(passIDOrName), " ", "-"))
+	pageURL := fmt.Sprintf("https://wsdot.com/travel/real-time/mountainpasses/%s", passSlug)
+	raw, err := a.HTTP.GetText(pageURL)
+	if err != nil {
+		return nil, err
+	}
+	flat := normalizeHTMLText(raw)
+
+	passName := parseByRegex(raw, `(?is)<title>\s*([^<]+?)\s+Conditions`)
+	if passName == "" {
+		passName = toTitleWords(strings.ReplaceAll(passSlug, "-", " "))
+	}
+	weather := parseByRegex(flat, `(?i)Conditions:\s*([^\\.]+)`)
+	restrictions := parseByRegex(flat, `(?i)Restrictions(?:\s+Eastbound|\s+Westbound)?\s*:?\s*([^\\.]+)`)
+	issuedAt := parseByRegex(flat, `\b(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+(?:AM|PM))\b`)
+	if issuedAt == "" {
+		issuedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	status := "Open"
+	lower := strings.ToLower(flat)
+	if strings.Contains(lower, "closed") {
+		status = "Closed"
+	} else if strings.Contains(lower, "no restrictions") {
+		status = "Open"
+	} else if strings.Contains(lower, "chains required") || strings.Contains(lower, "restriction") {
+		status = "Restricted"
+	}
+
+	return map[string]any{
+		"provider":  "WSDOT",
+		"issued_at": issuedAt,
+		"source": map[string]any{
+			"provider":     "WSDOT",
+			"url":          pageURL,
+			"retrieved_at": time.Now().UTC().Format(time.RFC3339),
+		},
+		"pass_id":            passSlug,
+		"pass_name":          passName,
+		"status":             status,
+		"restrictions":       restrictions,
+		"weather_conditions": weather,
 		"last_updated":       issuedAt,
 	}, nil
 }
@@ -98,4 +150,13 @@ func recordID(v wsdotPassRecord) string {
 		return fmt.Sprintf("%.0f", id)
 	}
 	return v.PassIDAlt
+}
+
+func parseByRegex(input, pattern string) string {
+	re := regexp.MustCompile(pattern)
+	m := re.FindStringSubmatch(input)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
 }
