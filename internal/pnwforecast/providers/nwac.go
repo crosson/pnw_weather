@@ -37,6 +37,12 @@ type nwacZoneConfig struct {
 	Slug string
 }
 
+type nwacDangerRating struct {
+	AboveTreeline string `json:"above_treeline"`
+	NearTreeline  string `json:"near_treeline"`
+	BelowTreeline string `json:"below_treeline"`
+}
+
 type NWACAdapter struct {
 	HTTP interface {
 		GetJSON(endpoint string, out any) error
@@ -120,10 +126,10 @@ func (a *NWACAdapter) GetAvalancheForecast(zoneID string) (map[string]any, error
 		},
 		"zone_id":   cfg.Slug,
 		"zone_name": zoneName,
-		"danger_rating": map[string]string{
-			"below_treeline": below,
-			"near_treeline":  near,
-			"above_treeline": above,
+		"danger_rating": nwacDangerRating{
+			AboveTreeline: above,
+			NearTreeline:  near,
+			BelowTreeline: below,
 		},
 		"primary_problems":      problems,
 		"travel_advice_summary": travel,

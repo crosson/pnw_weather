@@ -28,6 +28,12 @@ Use a local data root while developing:
 
 ```bash
 ./pnw-forecast --root ./.local-data area list
+
+Bypass cache for a one-off live fetch:
+
+```bash
+./pnw-forecast --no-cache avalanche --area Alpental
+```
 ```
 
 ## Examples

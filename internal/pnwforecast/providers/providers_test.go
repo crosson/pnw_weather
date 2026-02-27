@@ -80,8 +80,8 @@ func TestNWACForecastNormalization(t *testing.T) {
 	if out["zone_name"] != "Snoqualmie Pass" {
 		t.Fatalf("zone = %v", out["zone_name"])
 	}
-	danger := out["danger_rating"].(map[string]string)
-	if danger["above_treeline"] != "Considerable" || danger["near_treeline"] != "Considerable" || danger["below_treeline"] != "Moderate" {
+	danger := out["danger_rating"].(nwacDangerRating)
+	if danger.AboveTreeline != "Considerable" || danger.NearTreeline != "Considerable" || danger.BelowTreeline != "Moderate" {
 		t.Fatalf("danger = %#v", danger)
 	}
 }

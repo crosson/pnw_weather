@@ -12,6 +12,7 @@ import (
 
 func main() {
 	root := flag.String("root", "", "Override data root path")
+	noCache := flag.Bool("no-cache", false, "Bypass cache reads/writes for this run")
 	flag.Parse()
 
 	if flag.NArg() < 1 {
@@ -37,6 +38,7 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	svc.NoCache = *noCache
 
 	switch cmd {
 	case "area":

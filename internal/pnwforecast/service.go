@@ -12,6 +12,7 @@ import (
 type Service struct {
 	Storage    *AreaStorage
 	Cache      *JSONCache
+	NoCache    bool
 	Thresholds FreshnessThresholds
 	NWS        *providers.NWSAdapter
 	NWAC       *providers.NWACAdapter
@@ -58,6 +59,25 @@ func (s *Service) DeleteArea(name string) (bool, error) {
 }
 
 func (s *Service) withCache(provider, endpoint string, params any, staleAfter int, fetch func() (any, error)) (map[string]any, error) {
+	if s.NoCache {
+		value, err := fetch()
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		payload := map[string]any{}
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return nil, err
+		}
+		issuedAt, _ := payload["issued_at"].(string)
+		payload["cache_age_seconds"] = 0
+		payload["is_stale"] = isOlderThan(issuedAt, staleAfter)
+		return payload, nil
+	}
+
 	key, err := s.Cache.MakeKey(provider, endpoint, params)
 	if err != nil {
 		return nil, err
